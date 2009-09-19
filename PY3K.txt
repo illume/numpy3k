@@ -1,0 +1,23 @@
+Notes on the py3k port... in progress.
+
+So far the plan is to do stuff into the trunk incrementally.
+
+Notes about numpy core porting:
+    numpy/core/src/py3k_notes.txt
+
+numpy reference here(including explanations for developers):
+    http://docs.scipy.org/doc/numpy/reference/
+
+There are notes about porting to py3k here:
+    http://wiki.python.org/moin/cporting
+  and here:
+    http://wiki.python.org/moin/PortingExtensionModulesToPy3k
+
+illumes(Renes) git repo:
+    git clone git://github.com/illume/numpy3k.git           
+
+nose for py3k(for running tests):
+    svn checkout http://python-nose.googlecode.com/svn/branches/py3k nose3
+
+
+
