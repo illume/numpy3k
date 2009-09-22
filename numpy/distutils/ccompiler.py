@@ -1,7 +1,7 @@
 import re
 import os
 import sys
-import new
+import types
 
 from distutils.ccompiler import *
 from distutils import ccompiler
@@ -25,7 +25,9 @@ def _new_init_posix():
 #distutils.sysconfig._init_posix = _new_init_posix
 
 def replace_method(klass, method_name, func):
-    m = new.instancemethod(func, None, klass)
+    # py3k does not have 'new' module.
+    #m = new.instancemethod(func, None, klass)
+    m = types.InstanceType(func, None, klass)
     setattr(klass, method_name, m)
 
 # Using customized CCompiler.spawn.
@@ -115,7 +117,7 @@ def CCompiler_compile(self, sources, output_dir=None, macros=None,
                     src = cyg2win32(src)
                 self._compile(obj, src, ext, cc_args, extra_postargs, pp_opts)
     else:
-        for obj, (src, ext) in build.items():
+        for obj, (src, ext) in list(build.items()):
             self._compile(obj, src, ext, cc_args, extra_postargs, pp_opts)
 
     # Return *all* object filenames, not just the ones we just built.
