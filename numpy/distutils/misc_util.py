@@ -13,6 +13,11 @@ try:
 except NameError:
     from sets import Set as set
 
+#py3k compat
+def geterror ():
+    return sys.exc_info()[1]
+
+
 __all__ = ['Configuration', 'get_numpy_include_dirs', 'default_config_dict',
            'dict_append', 'appendpath', 'generate_config_py',
            'get_cmd', 'allpath', 'get_mathlibs',
@@ -56,7 +61,7 @@ def rel_path(path, parent_path):
     if apath==pd:
         return ''
     if pd == apath[:len(pd)]:
-        assert apath[len(pd)] in [os.sep],`path,apath[len(pd)]`
+        assert apath[len(pd)] in [os.sep],repr(path,apath[len(pd)])
         path = apath[len(pd)+1:]
     return path
 
@@ -178,7 +183,7 @@ def minrelpath(path):
 def _fix_paths(paths,local_path,include_non_existing):
     assert is_sequence(paths), repr(type(paths))
     new_paths = []
-    assert not is_string(paths),`paths`
+    assert not is_string(paths),repr(paths)
     for n in paths:
         if is_string(n):
             if '*' in n or '?' in n:
@@ -191,8 +196,8 @@ def _fix_paths(paths,local_path,include_non_existing):
                 else:
                     if include_non_existing:
                         new_paths.append(n)
-                    print 'could not resolve pattern in %r: %r' \
-                              % (local_path,n)
+                    print ('could not resolve pattern in %r: %r' \
+                              % (local_path,n))
             else:
                 n2 = njoin(local_path,n)
                 if os.path.exists(n2):
@@ -203,8 +208,8 @@ def _fix_paths(paths,local_path,include_non_existing):
                     elif include_non_existing:
                         new_paths.append(n)
                     if not os.path.exists(n):
-                        print 'non-existing path in %r: %r' \
-                              % (local_path,n)
+                        print ('non-existing path in %r: %r' \
+                               % (local_path,n))
 
         elif is_sequence(n):
             new_paths.extend(_fix_paths(n,local_path,include_non_existing))
@@ -270,7 +275,7 @@ def terminal_has_colors():
                          and curses.tigetstr("setab") is not None)
                      or curses.tigetstr("scp") is not None)):
                 return 1
-        except Exception,msg:
+        except Exception:
             pass
     return 0
 
@@ -347,7 +352,7 @@ def msvc_on_amd64():
     if 'DISTUTILS_USE_SDK' in os.environ:
         return
     # try to avoid _MSVCCompiler__root attribute error
-    print 'Forcing DISTUTILS_USE_SDK=1'
+    print ('Forcing DISTUTILS_USE_SDK=1')
     os.environ['DISTUTILS_USE_SDK']='1'
     return
 
@@ -529,7 +534,7 @@ def general_source_directories_files(top_path):
 def get_ext_source_files(ext):
     # Get sources and any include files in the same directory.
     filenames = []
-    sources = filter(is_string, ext.sources)
+    sources = list(filter(is_string, ext.sources))
     filenames.extend(sources)
     filenames.extend(get_dependencies(sources))
     for d in ext.depends:
@@ -540,13 +545,14 @@ def get_ext_source_files(ext):
     return filenames
 
 def get_script_files(scripts):
-    scripts = filter(is_string, scripts)
+    scripts = list(filter(is_string, scripts))
     return scripts
 
 def get_lib_source_files(lib):
     filenames = []
     sources = lib[1].get('sources',[])
-    sources = filter(is_string, sources)
+    sources = list(filter(is_string, sources))
+
     filenames.extend(sources)
     filenames.extend(get_dependencies(sources))
     depends = lib[1].get('depends',[])
@@ -563,7 +569,7 @@ def get_data_files(data):
     sources = data[1]
     filenames = []
     for s in sources:
-        if callable(s):
+        if hasattr(s, '__call__'):
             continue
         if is_local_src_dir(s):
             filenames.extend(list(general_source_files(s)))
@@ -571,9 +577,9 @@ def get_data_files(data):
             if os.path.isfile(s):
                 filenames.append(s)
             else:
-                print 'Not existing data file:',s
+                print ('Not existing data file:',s)
         else:
-            raise TypeError,repr(s)
+            raise TypeError( repr(s) )
     return filenames
 
 def dot_join(*args):
@@ -659,7 +665,7 @@ class Configuration(object):
 
         known_keys = self.list_keys + self.dict_keys
         self.extra_keys = self._extra_keys[:]
-        for n in attrs.keys():
+        for n in list(attrs.keys()):
             if n in known_keys:
                 continue
             a = attrs[n]
@@ -720,10 +726,10 @@ class Configuration(object):
 
     def info(self, message):
         if not self.options['quiet']:
-            print message
+            print (message)
 
     def warn(self, message):
-        print>>sys.stderr, blue_text('Warning: %s' % (message,))
+        sys.stderr.write( blue_text('Warning: %s' % (message,)), "\n")
 
     def set_options(self, **options):
         """Configure Configuration instance.
@@ -734,11 +740,11 @@ class Configuration(object):
         - delegate_options_to_subpackages
         - quiet
         """
-        for key, value in options.items():
+        for key, value in list(options.items()):
             if key in self.options:
                 self.options[key] = value
             else:
-                raise ValueError,'Unknown option: '+key
+                raise ValueError( 'Unknown option: '+key )
 
     def get_distribution(self):
         """Return the distutils distribution object for self."""
@@ -750,7 +756,8 @@ class Configuration(object):
                                  caller_level = 1):
         l = subpackage_name.split('.')
         subpackage_path = njoin([self.local_path]+l)
-        dirs = filter(os.path.isdir,glob.glob(subpackage_path))
+        dirs = list(filter(os.path.isdir,glob.glob(subpackage_path)))
+
         config_list = []
         for d in dirs:
             if not os.path.isfile(njoin(d,'__init__.py')):
@@ -791,7 +798,15 @@ class Configuration(object):
             else:
                 pn = dot_join(*([parent_name] + subpackage_name.split('.')[:-1]))
                 args = (pn,)
-                if setup_module.configuration.func_code.co_argcount > 1:
+
+                # func_code is moved to __code__ in py3k.  So we see if it is
+                # there first.
+                if hasattr(setup_module.configuration, 'func_code'):
+                    the_func_code = getattr(setup_module.configuration, 'func_code')
+                else:
+                    the_func_code = setup_module.configuration.__code__
+
+                if the_func_code.co_argcount > 1:
                     args = args + (self.top_path,)
                 config = setup_module.configuration(*args)
             if config.name!=dot_join(parent_name,subpackage_name):
@@ -831,7 +846,7 @@ class Configuration(object):
             return self._wildcard_get_subpackage(subpackage_name,
                                                  parent_name,
                                                  caller_level = caller_level+1)
-        assert '*' not in subpackage_name,`subpackage_name, subpackage_path,parent_name`
+        assert '*' not in subpackage_name,repr(subpackage_name, subpackage_path,parent_name)
         if subpackage_path is None:
             subpackage_path = njoin([self.local_path] + l)
         else:
@@ -894,7 +909,7 @@ class Configuration(object):
             d = config
             if isinstance(config, Configuration):
                 d = config.todict()
-            assert isinstance(d,dict),`type(d)`
+            assert isinstance(d,dict),repr(type(d))
 
             self.info('Appending %s configuration to %s' \
                       % (d.get('name'), self.name))
@@ -978,14 +993,15 @@ class Configuration(object):
                 pattern_list = allpath(d).split(os.sep)
                 pattern_list.reverse()
                 # /a/*//b/ -> /a/*/b
-                rl = range(len(pattern_list)-1); rl.reverse()
+                rl = list(range(len(pattern_list)-1)); rl.reverse()
+
                 for i in rl:
                     if not pattern_list[i]:
                         del pattern_list[i]
                 #
                 for path in paths:
                     if not os.path.isdir(path):
-                        print 'Not a directory, skipping',path
+                        print ('Not a directory, skipping',path)
                         continue
                     rpath = rel_path(path, self.local_path)
                     path_list = rpath.split(os.sep)
@@ -995,11 +1011,10 @@ class Configuration(object):
                     for s in pattern_list:
                         if is_glob_pattern(s):
                             if i>=len(path_list):
-                                raise ValueError,'cannot fill pattern %r with %r' \
-                                      % (d, path)
+                                raise ValueError('cannot fill pattern %r with %r' % (d, path))
                             target_list.append(path_list[i])
                         else:
-                            assert s==path_list[i],`s,path_list[i],data_path,d,path,rpath`
+                            assert s==path_list[i],repr(s,path_list[i],data_path,d,path,rpath)
                             target_list.append(s)
                         i += 1
                     if path_list[i:]:
@@ -1011,7 +1026,7 @@ class Configuration(object):
                 for path in paths:
                     self.add_data_dir((d,path))
             return
-        assert not is_glob_pattern(d),`d`
+        assert not is_glob_pattern(d),repr(d)
 
         dist = self.get_distribution()
         if dist is not None and dist.data_files is not None:
@@ -1031,7 +1046,8 @@ class Configuration(object):
                 data_dict[p] = set()
             for f in files:
                 data_dict[p].add(f)
-        self.data_files[:] = [(p,list(files)) for p,files in data_dict.items()]
+        self.data_files[:] = [(p,list(files)) for p,files in list(data_dict.items())]
+
 
     def add_data_files(self,*files):
         """Add data files to configuration data_files.
@@ -1140,10 +1156,10 @@ class Configuration(object):
                     self.add_data_files((d,f))
                 return
         else:
-            raise TypeError,`type(files)`
+            raise TypeError( repr(type(files)) )
 
         if d is None:
-            if callable(filepat):
+            if hasattr(filepat, '__call__'):
                 d = ''
             elif os.path.isabs(filepat):
                 d = ''
@@ -1174,7 +1190,7 @@ class Configuration(object):
             else:
                 self.add_data_files((d,paths))
             return
-        assert not is_glob_pattern(d),`d,filepat`
+        assert not is_glob_pattern(d),repr(d,filepat)
 
         dist = self.get_distribution()
         if dist is not None and dist.data_files is not None:
@@ -1252,7 +1268,7 @@ class Configuration(object):
                       include_non_existing=include_non_existing)
 
     def _fix_paths_dict(self,kw):
-        for k in kw.keys():
+        for k in list(kw.keys()):
             v = kw[k]
             if k in ['sources','depends','include_dirs','library_dirs',
                      'module_dirs','extra_objects']:
@@ -1399,7 +1415,7 @@ class Configuration(object):
 
         # Sometimes, depends is not set up to an empty list by default, and if
         # depends is not given to add_library, distutils barfs (#1134)
-        if not build_info.has_key('depends'):
+        if 'depends' not in build_info:
             build_info['depends'] = []
 
         self._fix_paths_dict(build_info)
@@ -1502,7 +1518,7 @@ class Configuration(object):
         basename = os.path.splitext(template)[0]
         template = os.path.join(self.package_path, template)
 
-        if self.installed_pkg_config.has_key(self.name):
+        if self.name in self.installed_pkg_config:
             self.installed_pkg_config[self.name].append((template, install_dir,
                 subst_dict))
         else:
@@ -1577,30 +1593,30 @@ class Configuration(object):
         else:
             self.scripts.extend(scripts)
 
-    def dict_append(self,**dict):
+    def dict_append(self,**adict):
         for key in self.list_keys:
             a = getattr(self,key)
-            a.extend(dict.get(key,[]))
-        for key in self.dict_keys:
+            a.extend(adict.get(key,[]))
+        for key in list(adict.keys()):
             a = getattr(self,key)
-            a.update(dict.get(key,{}))
-        known_keys = self.list_keys + self.dict_keys + self.extra_keys
-        for key in dict.keys():
+            a.update(adict.get(key,{}))
+        known_keys = self.list_keys + self.adict_keys + self.extra_keys
+        for key in list(adict.keys()):
             if key not in known_keys:
                 a = getattr(self, key, None)
-                if a and a==dict[key]: continue
+                if a and a==adict[key]: continue
                 self.warn('Inheriting attribute %r=%r from %r' \
-                          % (key,dict[key],dict.get('name','?')))
-                setattr(self,key,dict[key])
+                          % (key,adict[key],adict.get('name','?')))
+                setattr(self,key,adict[key])
                 self.extra_keys.append(key)
             elif key in self.extra_keys:
                 self.info('Ignoring attempt to set %r (from %r to %r)' \
-                          % (key, getattr(self,key), dict[key]))
+                          % (key, getattr(self,key), adict[key]))
             elif key in known_keys:
                 # key is already processed above
                 pass
             else:
-                raise ValueError, "Don't know about key=%r" % (key)
+                raise ValueError( "Don't know about key=%r" % (key) )
 
     def __str__(self):
         from pprint import pformat
@@ -1763,7 +1779,8 @@ class Configuration(object):
                 n = dot_join(self.name,name)
                 try:
                     version_module = imp.load_module('_'.join(n.split('.')),*info)
-                except ImportError,msg:
+                except ImportError:
+                    msg = get_error()
                     self.warn(str(msg))
                     version_module = None
                 if version_module is None:
@@ -1853,7 +1870,11 @@ class Configuration(object):
         Return information (from system_info.get_info) for all of the names in
         the argument list in a single dictionary.
         """
-        from system_info import get_info, dict_append
+        try:
+            from system_info import get_info, dict_append
+        except ImportError:
+            from numpy.distutils.system_info import get_info, dict_append
+
         info_dict = {}
         for a in names:
             dict_append(info_dict,**get_info(a))
@@ -1955,7 +1976,7 @@ def get_info(pkgname, dirs=None):
 
     # Translate LibraryInfo instance into a build_info dict
     info = parse_flags(pkg_info.cflags())
-    for k, v in parse_flags(pkg_info.libs()).items():
+    for k, v in list(parse_flags(pkg_info.libs()).items()):
         info[k].extend(v)
 
     # add_extension extra_info argument is ANAL
@@ -1966,7 +1987,11 @@ def get_info(pkgname, dirs=None):
     return info
 
 def is_bootstrapping():
-    import __builtin__
+    try:
+        import __builtin__
+    except ImportError:
+        import builtins as __builtin__
+
     try:
         __builtin__.__NUMPY_SETUP__
         return True
@@ -2009,11 +2034,11 @@ def scons_generate_config_py(target):
     f.write(r'''
 def show():
     for pkg, config in _config.items():
-        print "package %s configuration:" % pkg
+        print ("package %s configuration:" % pkg)
         for lib, libc in config.items():
-            print '    %s' % lib
+            print ('    %s' % lib)
             for line in libc.split('\n'):
-                print '\t%s' % line
+                print ('\t%s' % line)
     ''')
     f.close()
     return target
@@ -2035,7 +2060,7 @@ def default_config_dict(name = None, parent_name = None, local_path=None):
 
 
 def dict_append(d, **kws):
-    for k, v in kws.items():
+    for k, v in list(kws.items()):
         if k in d:
             ov = d[k]
             if isinstance(ov,str):
@@ -2080,7 +2105,8 @@ def generate_config_py(target):
     f.write('# This file is generated by %s\n' % (os.path.abspath(sys.argv[0])))
     f.write('# It contains system_info results at the time of building this package.\n')
     f.write('__all__ = ["get_info","show"]\n\n')
-    for k, i in system_info.saved_results.items():
+    for k, i in list(system_info.saved_results.items()):
+
         f.write('%s=%r\n' % (k, i))
     f.write(r'''
 def get_info(name):
@@ -2090,15 +2116,15 @@ def get_info(name):
 def show():
     for name,info_dict in globals().items():
         if name[0] == "_" or type(info_dict) is not type({}): continue
-        print name + ":"
+        print (name + ":")
         if not info_dict:
-            print "  NOT AVAILABLE"
+            print ("  NOT AVAILABLE")
         for k,v in info_dict.items():
             v = str(v)
             if k == "sources" and len(v) > 200:
                 v = v[:60] + " ...\n... " + v[-60:]
-            print "    %s = %s" % (k,v)
-        print
+            print ("    %s = %s" % (k,v))
+        print ("\n")
     ''')
 
     f.close()
