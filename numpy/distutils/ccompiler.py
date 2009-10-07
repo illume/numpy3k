@@ -25,10 +25,14 @@ def _new_init_posix():
 #distutils.sysconfig._init_posix = _new_init_posix
 
 def replace_method(klass, method_name, func):
-    # py3k does not have 'new' module.
-    #m = new.instancemethod(func, None, klass)
-    m = types.InstanceType(func, None, klass)
-    setattr(klass, method_name, m)
+    try:
+        import new
+        m = new.instancemethod(func, None, klass)
+        setattr(klass, method_name, m)
+    except ImportError:
+        # py3k does not have 'new' module.
+        setattr(klass, method_name, func.__get__(None, klass) )
+
 
 # Using customized CCompiler.spawn.
 def CCompiler_spawn(self, cmd, display=None):
